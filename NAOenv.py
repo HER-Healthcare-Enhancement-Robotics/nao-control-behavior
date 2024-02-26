@@ -20,6 +20,7 @@ import pybullet_data
 import time
 import math
 import random
+import numpy as np
 
 # [Deep Learning Libraries]
 import torch
@@ -55,8 +56,9 @@ class NaoEnv(gym.Env):
 
     # [Constructor]{@nao}[Environment Configuration
     def __init__(self, 
-                delta=0.1,
+                delta=10,
                 minimum_position=.45,
+                with_ball=True,
                 render_mode=False
                 ):
         # [Environment Configuration]
@@ -66,32 +68,43 @@ class NaoEnv(gym.Env):
         # [PyBullet Configuration]
         if self.render_mode:
             self.physicsClient = p.connect(p.GUI)
-            p.setRealTimeSimulation(1)
+            p.setRealTimeSimulation(0)
         else:
             self.physicsClient = p.connect(p.DIRECT)
-        p.setGravity(0, 0, -9.81)
+        p.setGravity(0, 0, -18.81)
         
         p.setAdditionalSearchPath(pybullet_data.getDataPath())
 
         # [PyBullet Configuration]{@nao}[URDFs]
         self.planeId = p.loadURDF("plane.urdf")
-        self.naoId = p.loadURDF("humanoid/nao.urdf", [0, 0, .35])
-        self.ballId = p.loadURDF("ball.urdf", [0, 0, 5])
+        self.naoId = p.loadURDF("Models/humanoid/nao.urdf", [0, 0, .35])
+        if with_ball:
+            self.ballId = p.loadURDF("Models/ball.urdf", [0, 0, 5])
+
+        # [PyBullet Configuration]{@nao}[Initial Position]
+        self.initial_position = p.getBasePositionAndOrientation(self.naoId)[0]
+        # [PyBullet Configuration]{@nao}[Initial Position]
+        self.initial_orientation = p.getBasePositionAndOrientation(self.naoId)[1]
+        # [PyBullet Configuration]{@nao}[Initial JointConfiguration]
+        self.initial_joint_configuration = p.getJointStates(self.naoId, range(p.getNumJoints(self.naoId)))
 
         # [NaoBrain Configuration]
         self.jointDelta = delta
         self.last_launch_time = time.time()
-        self.action_space = gym.spaces.Box(low=-1, high=1, shape=(p.getNumJoints(self.naoId),))
-        self.observation_space = gym.spaces.Box(low=-1, high=1, shape=(p.getNumJoints(self.naoId),))
+        self.action_space = gym.spaces.Box(low=-delta, high=delta, shape=(p.getNumJoints(self.naoId),))
+        self.observation_space = gym.spaces.Box(low=-np.inf, high=np.inf, shape=(p.getNumJoints(self.naoId),))
         self.reward_range = (0, 1)
 
-    def step(self, action):
+        # [Environment Control Variables][@gym][Step]
+        self._max_episode_steps = 1000
+        self._elapsed_steps = 0
 
+    def step(self, action):
         # [PyBullet Configuration]{@nao}[Neck Position]
         neck_position = self._get_neck_position(self.naoId)
         # [PyBullet Configuration]{@nao}[Done]
-        trunc = self._get_done(neck_position, threshold=self.minimum_position * .5)
-        done = self._get_done(neck_position, threshold=self.minimum_position)
+        trunc = self._get_done(neck_position, threshold=self.minimum_position * .6)
+        done = self._get_done(neck_position, threshold=self.minimum_position * .6)
         # [PyBullet Configuration]{@nao}[Reward]
         reward = self._calculate_reward(neck_position,threshold=self.minimum_position)
         # [PyBullet Configuration]{@nao}[Launch Ball]
@@ -101,14 +114,17 @@ class NaoEnv(gym.Env):
             random_position = [random.uniform(-1, 1), random.uniform(-1, 1), 5]
             for i in range(3):
                 random_position[i] = random_position[i] + target_position[i]
-            self._launch_ball(self.ballId, random_position)
+            #self._launch_ball(self.ballId, random_position)
             self.last_launch_time = time.time()
         # [PyBullet Configuration]{@nao}[Movement]
         self._set_movement(action)
         # [PyBullet Configuration]{@nao}[Step Simulation]
         # Make a pause in the simulation
-        time.sleep(1./2.)
+        #time.sleep(1./20.)
         p.stepSimulation()
+        # [Gym Control Variables]{@gym}[Step]
+        self._elapsed_steps += 1
+        done = done or self._elapsed_steps >= self._max_episode_steps
         
         # [PyBullet Configuration]{@nao}[Observation]
         observation = self._get_observation()
@@ -129,9 +145,9 @@ class NaoEnv(gym.Env):
     # [Methods]{@nao}[calculate_reward]
     def _calculate_reward(self, neck_position, threshold=0.45):
         if neck_position > threshold:
-            return 1.0
+            return 1
         else:
-            return -.5
+            return -1
         
     # [Methods]{@nao}[get_done]
     def _get_done(self, neck_position, threshold=0.45):
@@ -152,10 +168,26 @@ class NaoEnv(gym.Env):
         for i in range(p.getNumJoints(self.naoId)):
             # Consider the jointLimits
             #p.setJointMotorControl2(self.naoId, i, p.POSITION_CONTROL, actions[i].item()*self.jointDelta)
-            p.setJointMotorControl2(self.naoId, i, p.POSITION_CONTROL, actions[i].item()*self.jointDelta)
+            p.setJointMotorControl2(self.naoId, i, p.VELOCITY_CONTROL, targetVelocity=actions[i].item()*self.jointDelta*10, force=100)
     
-    def reset(self):
+    def reset(self, seed=None):
+        # [PyBullet Configuration]{@nao}[Reset Simulation]
+        p.resetBasePositionAndOrientation(self.naoId, self.initial_position, self.initial_orientation)
+        for i, state in enumerate(self.initial_joint_configuration):
+            p.resetJointState(self.naoId, i, state[0])
+        self.last_launch_time = time.time()
+        # [Gym Control Variables]{@gym}[Reset]
+        self._elapsed_steps = 0
         return self._get_observation(), {}
+    
+    # [Methods]{@nao}[getCollision]
+    def _get_collision(self):
+        # Check if the Nao touches the ground
+        touch = False
+        ContactPoints = p.getContactPoints(self.naoId, self.planeId)
+        if len(ContactPoints) > 0:
+            touch = True
+        return touch
     
     def render(self):
         pass
@@ -168,11 +200,6 @@ def get_neck_position(naoId):
     neck_position, _, _, _, _, _ = p.getLinkState(naoId, 9, computeForwardKinematics=True)
     return neck_position[2]
 
-def calculate_reward(neck_position, threshold=0.45):
-    if neck_position > threshold:
-        return 1.0
-    else:
-        return 0.0
 
 def launch_ball(ballId, start_position,target_position):
     # Set the orientation to face the target
@@ -196,7 +223,7 @@ if __name__ == "__main__":
     # [Start Simulation]
     state, _ = env.reset()
     # [Start Simulation]{@nao}[Loop]
-    while True:
+    for _ in range(1000):
         # [PyBullet Configuration]{@nao}[Get action]
         dist = brain(state)
         action = dist.sample()
@@ -204,10 +231,13 @@ if __name__ == "__main__":
         state, reward, done, trunc, _ = env.step(action)
         # [PyBullet Configuration]{@nao}[Print]
         print (f"Reward: {reward}, Position: {get_neck_position(env.naoId)}")
+        if env._get_collision():
+            print ("Collision")
         #print(f"Neck Position: {get_neck_position(env.naoId)}, Reward: {reward}")
         if done:
             print ("Done")
-            break
+            state,_=env.reset()
+
     # [End Simulation]
     env.close()
         
