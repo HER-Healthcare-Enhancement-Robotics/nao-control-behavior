@@ -83,7 +83,7 @@ class NaoEnv(gym.Env):
         p.setAdditionalSearchPath(pybullet_data.getDataPath())
 
         # [PyBullet Configuration]{@nao}[URDFs]
-        self.planeId = p.loadURDF("plane.urdf")
+        self.planeId = p.loadURDF("NaoBot/Models/humanoid/nao.urdf")
         self.naoId = p.loadURDF("NaoBot/Models/humanoid/nao.urdf", [0, 0, .33])
         if with_ball:
             self.ballId = p.loadURDF("NaoBot/Models/ball.urdf", [0, 0, 5])
