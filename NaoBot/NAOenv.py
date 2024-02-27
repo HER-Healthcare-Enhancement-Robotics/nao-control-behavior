@@ -84,9 +84,9 @@ class NaoEnv(gym.Env):
 
         # [PyBullet Configuration]{@nao}[URDFs]
         self.planeId = p.loadURDF("plane.urdf")
-        self.naoId = p.loadURDF("Models/humanoid/nao.urdf", [0, 0, .33])
+        self.naoId = p.loadURDF("NaoBot/Models/humanoid/nao.urdf", [0, 0, .33])
         if with_ball:
-            self.ballId = p.loadURDF("Models/ball.urdf", [0, 0, 5])
+            self.ballId = p.loadURDF("NaoBot/Models/ball.urdf", [0, 0, 5])
 
         # [PyBullet Configuration]{@nao}[Initial Position]
         self.initial_position = p.getBasePositionAndOrientation(self.naoId)[0]
