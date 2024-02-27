@@ -177,8 +177,8 @@ class NaoEnv(gym.Env):
         for i in range(p.getNumJoints(self.naoId)):
             # Consider the jointLimits
             #p.setJointMotorControl2(self.naoId, i, p.POSITION_CONTROL, actions[i].item()*self.jointDelta)
-           
             p.setJointMotorControl2(self.naoId, i, p.VELOCITY_CONTROL, targetVelocity=actions[i].item()*self.jointDelta, force=1000)
+            
     
     def reset(self, seed=None):
         # [PyBullet Configuration]{@nao}[Reset Simulation]
@@ -235,7 +235,7 @@ if __name__ == "__main__":
         dist = brain(state)
         action = dist.sample()
         ones = torch.ones_like(action)
-        #action = ones
+        action = ones
         # [PyBullet Configuration]{@nao}[Add action to the joints]
         state, reward, done, trunc, _ = env.step(action)
         # [PyBullet Configuration]{@nao}[Print]
