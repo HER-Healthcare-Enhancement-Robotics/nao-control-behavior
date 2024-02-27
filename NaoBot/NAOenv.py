@@ -83,7 +83,7 @@ class NaoEnv(gym.Env):
         p.setAdditionalSearchPath(pybullet_data.getDataPath())
 
         # [PyBullet Configuration]{@nao}[URDFs]
-        self.planeId = p.loadURDF("NaoBot/Models/humanoid/nao.urdf")
+        self.planeId = p.loadURDF("plane.urdf")
         self.naoId = p.loadURDF("NaoBot/Models/humanoid/nao.urdf", [0, 0, .33])
         if with_ball:
             self.ballId = p.loadURDF("NaoBot/Models/ball.urdf", [0, 0, 5])
@@ -137,6 +137,16 @@ class NaoEnv(gym.Env):
         observation = self._get_observation()
         return observation, reward, done, trunc, {}
     
+        # [Methods]{@nao}[movement]
+    def _set_movement(self, actions):
+        for i in range(p.getNumJoints(self.naoId)):
+            # Consider the jointLimits
+            jointState = p.getJointState(self.naoId, i)[0] + actions[i].item()*self.jointDelta
+            jointState = max(jointState, p.getJointInfo(self.naoId, i)[8])
+            jointState = min(jointState, p.getJointInfo(self.naoId, i)[9])
+            p.setJointMotorControl2(self.naoId, i, p.POSITION_CONTROL, targetPosition=jointState, force=500)
+            #p.setJointMotorControl2(self.naoId, i, p.VELOCITY_CONTROL, targetVelocity=actions[i].item()*self.jointDelta, force=1000)
+    
     # [Methods]{@nao}[get_neck_position]
     def _get_neck_position(self, naoId):
         neck_position, _, _, _, _, _ = p.getLinkState(naoId, 9, computeForwardKinematics=True)
@@ -172,13 +182,7 @@ class NaoEnv(gym.Env):
         ball_velocity = [0, 0, -10]
         p.resetBaseVelocity(ballId, ball_velocity)
 
-    # [Methods]{@nao}[movement]
-    def _set_movement(self, actions):
-        for i in range(p.getNumJoints(self.naoId)):
-            # Consider the jointLimits
-            #p.setJointMotorControl2(self.naoId, i, p.POSITION_CONTROL, actions[i].item()*self.jointDelta)
-            p.setJointMotorControl2(self.naoId, i, p.VELOCITY_CONTROL, targetVelocity=actions[i].item()*self.jointDelta, force=1000)
-            
+
     
     def reset(self, seed=None):
         # [PyBullet Configuration]{@nao}[Reset Simulation]
@@ -224,7 +228,7 @@ def launch_ball(ballId, start_position,target_position):
     # Change position to a random position
 
 if __name__ == "__main__":
-    env = NaoEnv(render_mode="human",delta=1.5)
+    env = NaoEnv(render_mode="human",delta=0.01)
     # Create a NaoBrain with the number of joints
     brain = NaoBrain(env.observation_space.shape[0], env.action_space.shape[0])
     # [Start Simulation]
