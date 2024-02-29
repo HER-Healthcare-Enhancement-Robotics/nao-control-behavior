@@ -86,7 +86,7 @@ class NaoTrainer:
         self.batch_size = batch_size
         self.gamma = gamma
         self.random_epsilon = random_epsilon
-        self.mean_rewards = deque(maxlen=10)
+        self.mean_rewards = deque(maxlen=100)
 
     def collect_experience(self):
         state,_ = self.env.reset()
@@ -95,8 +95,8 @@ class NaoTrainer:
         while not done:
             dist, value = self.brain(torch.tensor(np.array(state), dtype=torch.float32))
             if np.random.rand() < self.random_epsilon:
-                action = Normal(torch.zeros_like(dist.mean), torch.ones_like(dist.stddev)).sample()
-                self.random_epsilon *= 0.99995
+                action = Normal(torch.zeros_like(dist.mean), .1*torch.ones_like(dist.stddev)).sample()
+                self.random_epsilon *= 0.99998
             else:
                 action = dist.sample()
             action = torch.clamp(action, -1, 1).detach().numpy()
@@ -119,7 +119,7 @@ class NaoTrainer:
                 # normalize returns
                 returns = (returns - returns.mean()) / (returns.std() + 1e-4)
                 # Convert the divided by 0 to 0
-                returns = torch.where(torch.isnan(returns), torch.zeros_like(returns), returns)
+                returns = torch.where(torch.isnan(returns), torch.mean(returns), returns)
                 self.optimizer.zero_grad()
                 dist, value = self.brain(states)
                 log_probs = dist.log_prob(actions)
@@ -170,12 +170,24 @@ class NaoBrain(nn.Module):
             value = self.value(x)
             return Normal(mean, std), value
         
+class NaoBrainLSTM(nn.Module):
+    
+        def __init__(self,
+                    state_dim,
+                    action_dim,
+                    hidden_dim,
+                    num_layers,
+                    dropout):
+            super(NaoBrainLSTM, self).__init__()
+            self.lstm = nn.LSTM(state_dim, hidden_dim, num_layers, batch_first=True, dropout=dropout)
+        
 if __name__ == "__main__":
     # [Environment Configuration]
-    env = NaoEnv(render_mode="human",delta=0.4)
+    env = NaoEnv(render_mode="human",delta=0.35)
     # [Brain Configuration]
     brain = NaoBrain(env.observation_space.shape[0], env.action_space.shape[0])
-
+    # [Load Model]
+    brain.load_state_dict(torch.load("nao.pth"))
     # [Buffer Configuration]
     buffer = Buffer()
     # [Optimizer Configuration]
@@ -183,9 +195,11 @@ if __name__ == "__main__":
     # [Trainer Configuration]
     trainer = NaoTrainer(env, brain, buffer, optimizer, 20, 32, 0.99)
     # [Training Loop]
-    for _ in range(100):
+    for _ in range(1000):
         trainer.collect_experience()
         print ("mean reward",np.mean(trainer.mean_rewards))
         trainer.train()
+        # [Save Model]
+        torch.save(brain.state_dict(), "nao.pth")
     # [Save Model]
     torch.save(brain.state_dict(), "nao.pth")

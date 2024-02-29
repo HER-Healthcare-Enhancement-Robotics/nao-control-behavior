@@ -110,8 +110,8 @@ class NaoEnv(gym.Env):
         # [PyBullet Configuration]{@nao}[Neck Position]
         neck_position = self._get_neck_position(self.naoId)
         # [PyBullet Configuration]{@nao}[Done]
-        trunc = self._get_done(neck_position, threshold=self.minimum_position * .3)
-        done = self._get_done(neck_position, threshold=self.minimum_position * .2)
+        trunc = self._get_done(neck_position, threshold=self.minimum_position * .7)
+        done = self._get_done(neck_position, threshold=self.minimum_position * .7)
         # [PyBullet Configuration]{@nao}[Reward]
         reward = self._calculate_reward(neck_position,threshold=self.minimum_position)
         # [PyBullet Configuration]{@nao}[Launch Ball]
